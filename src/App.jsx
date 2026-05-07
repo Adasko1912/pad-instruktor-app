@@ -66,8 +66,8 @@ const schedule = [
     day: 'D1',
     title: 'Teoria i warsztat',
     tasks: [
-      ['15:30-16:00', 'Zbiórka i wydanie', 'Podział na Z-1 do Z-10, wydanie sprzętu, podpisy odpowiedzialności materialnej.', 'Pełna obsada 40/40'],
-      ['16:00-16:30', 'Otwarcie', 'Powitanie, prezentacja kadry, plan 3-dniowy, zasady BHP.', '100% obecność'],
+      ['15:30-16:00', 'Otwarcie i organizacja', 'Otwarcie szkolenia, prezentacja kadry, sprawdzenie obecności, podział na grupy, sprawdzenie sprzętu oraz wyznaczenie dowódców.', 'Obecność, grupy i dowódcy potwierdzeni'],
+      ['16:00-16:30', 'Wydanie sprzętu', 'Wydanie sprzętu szkolonym i zespołom, potwierdzenie kompletności, podpisy odpowiedzialności materialnej oraz oznaczenie braków.', 'Sprzęt wydany i podpisany'],
       ['16:30-17:15', 'BSP - budowa', 'Mavic 3/3T/3 Pro: kadłub, ramiona, gimbal, sensory, akumulator, SD, kontroler.', 'Złożenie/rozłożenie < 60 s'],
       ['17:15-17:50', 'DJI - aplikacja', 'RTH 60 m, failsafe, limit 120 m, kalibracje, format SD, nagrywanie ekranu.', '8 parametrów bez błędu'],
       ['17:50-18:35', 'ATAK - podstawy', 'Warstwy, PZ/PO/OBJ/NAI/TAI/no-go, KML/KMZ, CoT, chat, zdjęcia GPS.', 'Eksport KML + import'],
