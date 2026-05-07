@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { saveAs } from 'file-saver';
 import * as XLSX from 'xlsx';
 import {
@@ -46,6 +46,7 @@ import {
 } from 'lucide-react';
 
 const today = new Date().toISOString().slice(0, 10);
+const assetPath = (path) => `${import.meta.env.BASE_URL}${path}`;
 
 const navItems = [
   { id: 'start', label: 'Start', icon: ClipboardCheck },
@@ -836,6 +837,8 @@ function App() {
   const [selectedTraineeId, setSelectedTraineeId] = useState('');
   const [traineeViewMode, setTraineeViewMode] = useState('table');
   const [importReport, setImportReport] = useState(null);
+  const [installPrompt, setInstallPrompt] = useState(null);
+  const [isInstalled, setIsInstalled] = useState(() => window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone);
 
   const activeCourse = courses.find((course) => course.id === activeCourseId) || courses[0] || createCourse();
   const progress = activeCourse.progress || {};
@@ -880,6 +883,35 @@ function App() {
   const filteredCases = caseLedger.filter((item) =>
     normalize(`${item.caseNo} ${item.name} ${item.contents} ${assigneeLabel(item.issuedTo, trainees)} ${item.status}`).includes(normalize(search)),
   );
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (event) => {
+      event.preventDefault();
+      setInstallPrompt(event);
+    };
+    const handleInstalled = () => {
+      setIsInstalled(true);
+      setInstallPrompt(null);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleInstalled);
+    };
+  }, []);
+
+  const installApp = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const choice = await installPrompt.userChoice;
+    if (choice.outcome === 'accepted') {
+      setIsInstalled(true);
+    }
+    setInstallPrompt(null);
+  };
 
   const updateActiveCourse = (updater) => {
     setCourses((previous) =>
@@ -1192,7 +1224,7 @@ function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <img className="brand-logo" src="/pad-logo-green.png" alt="Polska Armia Dronów" />
+          <img className="brand-logo" src={assetPath('pad-logo-green.png')} alt="Polska Armia Dronów" />
           <div>
             <strong>Instruktor BSP</strong>
             <span>Kurs intensywny 3 dni</span>
@@ -1217,11 +1249,16 @@ function App() {
       <main className="workspace">
         <header className="topbar">
           <div className="topbar-title">
-            <img className="topbar-logo" src="/pad-logo-wide.jpeg" alt="Polska Armia Dronów" />
+            <img className="topbar-logo" src={assetPath('pad-logo-wide.jpeg')} alt="Polska Armia Dronów" />
             <h1>Panel instruktora</h1>
             <p>{activeCourse.name} / {activeCourse.dateFrom || '-'} - {activeCourse.dateTo || '-'} / {activeCourse.location || 'bez miejsca'}</p>
           </div>
           <div className="topbar-actions">
+            {installPrompt && !isInstalled ? (
+              <ActionButton icon={Download} variant="primary" onClick={installApp}>
+                Zainstaluj
+              </ActionButton>
+            ) : null}
             <ActionButton icon={Archive} variant="secondary" onClick={() => exportCourseDocx(activeCourse, allKitItems, allPreCourseTasks)}>
               DOCX kursu
             </ActionButton>

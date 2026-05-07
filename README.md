@@ -10,6 +10,13 @@ Po wlaczeniu GitHub Pages aplikacja bedzie dostepna pod adresem:
 https://adasko1912.github.io/pad-instruktor-app/
 ```
 
+## Instalacja na Androidzie
+
+1. Otworz adres online w Chrome na Androidzie.
+2. Poczekaj kilka sekund, az przegladarka wczyta aplikacje.
+3. Kliknij przycisk `Zainstaluj` w aplikacji albo menu Chrome `...`.
+4. Wybierz `Zainstaluj aplikacje` lub `Dodaj do ekranu glownego`.
+
 ## Uruchomienie lokalnie
 
 ```powershell
