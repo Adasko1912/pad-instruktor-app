@@ -2,6 +2,14 @@
 
 Aplikacja webowa/PWA dla instruktora Polskiej Armii Dronow do prowadzenia kursu, checklist, sprzetu, listy szkolonych, importu Excel, raportow DOCX oraz wymiany informacji miedzy instruktorami.
 
+## Wersja online
+
+Po wlaczeniu GitHub Pages aplikacja bedzie dostepna pod adresem:
+
+```text
+https://adasko1912.github.io/pad-instruktor-app./
+```
+
 ## Uruchomienie lokalnie
 
 ```powershell
