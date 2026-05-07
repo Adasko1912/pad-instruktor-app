@@ -1234,6 +1234,28 @@ function App() {
     setIsMenuOpen(false);
   };
 
+  const deleteCourse = (courseId) => {
+    const course = courses.find((item) => item.id === courseId);
+    if (!course) return;
+    if (!window.confirm(`Usunąć kurs "${course.name}"? Tej operacji nie da się cofnąć.`)) return;
+
+    const remaining = courses.filter((item) => item.id !== courseId);
+    if (!remaining.length) {
+      const freshCourse = createCourse({ name: 'Kurs BSP', dateFrom: today, dateTo: today });
+      setCourses([freshCourse]);
+      setActiveCourseId(freshCourse.id);
+    } else {
+      setCourses(remaining);
+      if (courseId === activeCourse.id) {
+        setActiveCourseId(remaining[0].id);
+      }
+    }
+    setSelectedTraineeId('');
+    setSearch('');
+    setImportReport(null);
+    setActiveView('courses');
+  };
+
   const goToView = (view) => {
     setActiveView(view);
     setIsMenuOpen(false);
@@ -1358,6 +1380,7 @@ function App() {
             createNewCourse={createNewCourse}
             switchCourse={switchCourse}
             updateCourseMeta={updateCourseMeta}
+            deleteCourse={deleteCourse}
             exportCourseDocx={(course) => exportCourseDocx(course, allKitItems, allPreCourseTasks)}
             openActiveCourse={() => goToView('start')}
           />
@@ -1470,7 +1493,7 @@ function App() {
   );
 }
 
-function CoursesView({ courses, activeCourse, courseForm, setCourseForm, createNewCourse, switchCourse, updateCourseMeta, exportCourseDocx, openActiveCourse }) {
+function CoursesView({ courses, activeCourse, courseForm, setCourseForm, createNewCourse, switchCourse, updateCourseMeta, deleteCourse, exportCourseDocx, openActiveCourse }) {
   const updateForm = (field, value) => setCourseForm((previous) => ({ ...previous, [field]: value }));
 
   return (
@@ -1542,6 +1565,7 @@ function CoursesView({ courses, activeCourse, courseForm, setCourseForm, createN
                   {course.id === activeCourse.id ? 'Aktywny' : 'Otwórz'}
                 </ActionButton>
                 <IconButton icon={Archive} label="Zapisz DOCX" onClick={() => exportCourseDocx(course)} />
+                <IconButton icon={Trash2} label="Usuń kurs" variant="danger" onClick={() => deleteCourse(course.id)} />
               </div>
             </div>
           ))}
