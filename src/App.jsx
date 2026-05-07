@@ -26,6 +26,7 @@ import {
   FileSpreadsheet,
   FolderOpen,
   ListChecks,
+  Menu,
   PackageCheck,
   Plane,
   Plus,
@@ -370,6 +371,9 @@ function createCourse(meta = {}) {
     dateTo: meta.dateTo || today,
     location: meta.location || '',
     createdAt: new Date().toISOString(),
+    status: 'aktywny',
+    startedAt: new Date().toISOString(),
+    endedAt: '',
     progress: {},
     preCourseProgress: {},
     carryState: {},
@@ -451,6 +455,27 @@ function normalize(value) {
 
 function fullName(person) {
   return [person.rank, person.firstName, person.lastName].filter(Boolean).join(' ');
+}
+
+function isDone(value) {
+  return Boolean(value === true || value?.done);
+}
+
+function completedAt(value) {
+  return value?.completedAt || '';
+}
+
+function doneEntry(done) {
+  return done ? { done: true, completedAt: new Date().toISOString() } : null;
+}
+
+function formatDateTime(value) {
+  if (!value) return '-';
+  try {
+    return new Date(value).toLocaleString('pl-PL');
+  } catch {
+    return value;
+  }
 }
 
 function personKey(person) {
@@ -669,7 +694,8 @@ async function exportCourseDocx(course, kitItems = instructorKit, allPreCourseTa
     task.phase,
     task.title,
     task.description,
-    course.preCourseProgress?.[task.id] ? 'Wykonano' : 'Do wykonania',
+    isDone(course.preCourseProgress?.[task.id]) ? 'Wykonano' : 'Do wykonania',
+    formatDateTime(completedAt(course.preCourseProgress?.[task.id])),
     task.source === 'custom' ? 'Własne' : 'Stałe',
   ]);
   const taskRows = schedule.flatMap((group) =>
@@ -677,7 +703,8 @@ async function exportCourseDocx(course, kitItems = instructorKit, allPreCourseTa
       group.day,
       task.time,
       task.title,
-      course.progress?.[task.id] ? 'Wykonano' : 'Do wykonania',
+      isDone(course.progress?.[task.id]) ? 'Wykonano' : 'Do wykonania',
+      formatDateTime(completedAt(course.progress?.[task.id])),
       task.metric,
     ]),
   );
@@ -713,6 +740,9 @@ async function exportCourseDocx(course, kitItems = instructorKit, allPreCourseTa
           docParagraph(`Nazwa: ${course.name}`),
           docParagraph(`Termin: ${course.dateFrom || '-'} - ${course.dateTo || '-'}`),
           docParagraph(`Miejsce: ${course.location || '-'}`),
+          docParagraph(`Status: ${course.status || 'aktywny'}`),
+          docParagraph(`Rozpoczęto: ${formatDateTime(course.startedAt || course.createdAt)}`),
+          docParagraph(`Zakończono: ${formatDateTime(course.endedAt)}`),
           docParagraph(`Liczba szkolonych: ${trainees.length}`),
           new Paragraph({ text: 'Instruktorzy kursu', heading: HeadingLevel.HEADING_1 }),
           instructorRows.length
@@ -818,7 +848,8 @@ function ProgressDial({ value, label }) {
 }
 
 function App() {
-  const [activeView, setActiveView] = useState('start');
+  const [activeView, setActiveView] = useState('courses');
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [activeDay, setActiveDay] = useState('D1');
   const [courses, setCourses] = useLocalStorage('pad-instruktor.courses.v1', createMigratedCourses());
   const [activeCourseId, setActiveCourseId] = useLocalStorage('pad-instruktor.active-course.v1', courses[0]?.id || '');
@@ -852,8 +883,8 @@ function App() {
   const allPreCourseTasks = useMemo(() => [...preCourseTasks, ...customPreCourseTasks], [customPreCourseTasks]);
 
   const flatTasks = useMemo(() => schedule.flatMap((group) => group.tasks), []);
-  const doneTasks = flatTasks.filter((task) => progress[task.id]).length;
-  const preCourseDone = allPreCourseTasks.filter((task) => activeCourse.preCourseProgress?.[task.id]).length;
+  const doneTasks = flatTasks.filter((task) => isDone(progress[task.id])).length;
+  const preCourseDone = allPreCourseTasks.filter((task) => isDone(activeCourse.preCourseProgress?.[task.id])).length;
   const packedItems = allKitItems.filter((item) => carryState[item.id]?.packed).length;
   const openIssues = caseLedger.filter((item) => item.status === 'wydane').length;
   const missingGear = trainees.reduce((sum, trainee) => {
@@ -926,7 +957,7 @@ function App() {
   };
 
   const toggleTask = (taskId) => {
-    updateCourseField('progress', (previous) => ({ ...previous, [taskId]: !previous[taskId] }));
+    updateCourseField('progress', (previous) => ({ ...previous, [taskId]: doneEntry(!isDone(previous[taskId])) }));
   };
 
   const updateCarryItem = (itemId, patch) => {
@@ -948,7 +979,7 @@ function App() {
   };
 
   const togglePreCourseTask = (taskId) => {
-    updateCourseField('preCourseProgress', (previous) => ({ ...previous, [taskId]: !previous[taskId] }));
+    updateCourseField('preCourseProgress', (previous) => ({ ...previous, [taskId]: doneEntry(!isDone(previous[taskId])) }));
   };
 
   const addCustomKitItem = (event) => {
@@ -1187,6 +1218,7 @@ function App() {
     setSelectedTraineeId('');
     setImportReport(null);
     setActiveView('start');
+    setIsMenuOpen(false);
   };
 
   const updateCourseMeta = (courseId, patch) => {
@@ -1199,6 +1231,18 @@ function App() {
     setSearch('');
     setImportReport(null);
     setActiveView('start');
+    setIsMenuOpen(false);
+  };
+
+  const goToView = (view) => {
+    setActiveView(view);
+    setIsMenuOpen(false);
+  };
+
+  const finishCourse = async () => {
+    const endedAt = new Date().toISOString();
+    updateActiveCourse(() => ({ status: 'zakończony', endedAt }));
+    await exportCourseDocx({ ...activeCourse, status: 'zakończony', endedAt }, allKitItems, allPreCourseTasks);
   };
 
   const importTraineesFromExcel = async (file) => {
@@ -1230,9 +1274,13 @@ function App() {
             <span>Kurs intensywny 3 dni</span>
           </div>
         </div>
-        <nav>
+        <button className="menu-toggle" type="button" onClick={() => setIsMenuOpen((open) => !open)}>
+          <Menu size={18} />
+          <span>Menu</span>
+        </button>
+        <nav className={isMenuOpen ? 'open' : ''}>
           {navItems.map(({ id, label, icon: Icon }) => (
-            <button key={id} className={activeView === id ? 'active' : ''} type="button" onClick={() => setActiveView(id)}>
+            <button key={id} className={activeView === id ? 'active' : ''} type="button" onClick={() => goToView(id)}>
               <Icon size={18} />
               <span>{label}</span>
             </button>
@@ -1268,6 +1316,15 @@ function App() {
             <ActionButton icon={FileSpreadsheet} variant="secondary" onClick={exportIssues}>
               Wydania
             </ActionButton>
+            {activeCourse.status === 'zakończony' ? (
+              <ActionButton icon={CheckCircle2} variant="secondary" onClick={() => exportCourseDocx(activeCourse, allKitItems, allPreCourseTasks)}>
+                Kurs zakończony
+              </ActionButton>
+            ) : (
+              <ActionButton icon={CheckCircle2} variant="primary" onClick={finishCourse}>
+                Zakończ kurs
+              </ActionButton>
+            )}
           </div>
         </header>
 
@@ -1302,6 +1359,7 @@ function App() {
             switchCourse={switchCourse}
             updateCourseMeta={updateCourseMeta}
             exportCourseDocx={(course) => exportCourseDocx(course, allKitItems, allPreCourseTasks)}
+            openActiveCourse={() => goToView('start')}
           />
         )}
 
@@ -1412,11 +1470,28 @@ function App() {
   );
 }
 
-function CoursesView({ courses, activeCourse, courseForm, setCourseForm, createNewCourse, switchCourse, updateCourseMeta, exportCourseDocx }) {
+function CoursesView({ courses, activeCourse, courseForm, setCourseForm, createNewCourse, switchCourse, updateCourseMeta, exportCourseDocx, openActiveCourse }) {
   const updateForm = (field, value) => setCourseForm((previous) => ({ ...previous, [field]: value }));
 
   return (
     <section className="courses-layout">
+      <div className="panel form-panel">
+        <SectionHeader kicker="Po uruchomieniu" title="Aktywny kurs" />
+        <div className="active-course-card">
+          <strong>{activeCourse.name}</strong>
+          <span>{activeCourse.dateFrom || '-'} - {activeCourse.dateTo || '-'} / {activeCourse.location || 'bez miejsca'}</span>
+          <StatusPill value={activeCourse.status || 'aktywny'} />
+          <div className="row-actions">
+            <ActionButton icon={FolderOpen} variant="primary" onClick={openActiveCourse}>
+              Przejdź do kursu
+            </ActionButton>
+            <ActionButton icon={Archive} variant="secondary" onClick={() => exportCourseDocx(activeCourse)}>
+              Eksport DOCX
+            </ActionButton>
+          </div>
+        </div>
+      </div>
+
       <div className="panel form-panel">
         <SectionHeader kicker="Nowy cykl" title="Rozpocznij nowy kurs" />
         <form className="trainee-form" onSubmit={createNewCourse}>
@@ -1445,7 +1520,7 @@ function CoursesView({ courses, activeCourse, courseForm, setCourseForm, createN
         </form>
       </div>
 
-      <div className="panel table-panel">
+      <div className="panel table-panel wide-panel">
         <SectionHeader kicker={`${courses.length} zapisanych`} title="Aktywny kurs i archiwum" />
         <div className="course-list">
           {courses.map((course) => (
@@ -1453,7 +1528,8 @@ function CoursesView({ courses, activeCourse, courseForm, setCourseForm, createN
               <div className="course-meta">
                 <strong>{course.name}</strong>
                 <span>{course.dateFrom || '-'} - {course.dateTo || '-'} / {course.location || 'bez miejsca'}</span>
-                <small>{(course.trainees || []).length} szkolonych / {(course.caseLedger || []).filter((item) => item.status === 'wydane').length} aktywnych wydań</small>
+                <small>{course.status || 'aktywny'} / {(course.trainees || []).length} szkolonych / {(course.caseLedger || []).filter((item) => item.status === 'wydane').length} aktywnych wydań</small>
+                {course.endedAt ? <small>Zakończono: {formatDateTime(course.endedAt)}</small> : null}
               </div>
               <div className="course-edit-grid">
                 <input value={course.name} onChange={(event) => updateCourseMeta(course.id, { name: event.target.value })} />
@@ -1478,7 +1554,7 @@ function CoursesView({ courses, activeCourse, courseForm, setCourseForm, createN
 function StartView({ doneTasks, totalTasks, preCourseDone, totalPreCourse, packedItems, totalKit, openIssues, trainees, missingGear, instructorsCount, setActiveView, schedule, progress, carryState, caseLedger, allKitItems }) {
   const nextTasks = schedule
     .flatMap((group) => group.tasks.map((task) => ({ ...task, day: group.day })))
-    .filter((task) => !progress[task.id])
+    .filter((task) => !isDone(progress[task.id]))
     .slice(0, 5);
   const notPacked = allKitItems.filter((item) => !carryState[item.id]?.packed).slice(0, 6);
   const issued = caseLedger.filter((item) => item.status === 'wydane').slice(0, 5);
@@ -1568,7 +1644,7 @@ function StartView({ doneTasks, totalTasks, preCourseDone, totalPreCourse, packe
 
 function PreCourseView({ tasks, progress, toggleTask, customTaskForm, setCustomTaskForm, addCustomTask, deleteCustomTask }) {
   const updateForm = (field, value) => setCustomTaskForm((previous) => ({ ...previous, [field]: value }));
-  const done = tasks.filter((task) => progress[task.id]).length;
+  const done = tasks.filter((task) => isDone(progress[task.id])).length;
 
   return (
     <section className="prep-layout">
@@ -1600,12 +1676,13 @@ function PreCourseView({ tasks, progress, toggleTask, customTaskForm, setCustomT
         <SectionHeader kicker={`${done}/${tasks.length} wykonane`} title="Do zrobienia przed kursem" />
         <div className="timeline-list">
           {tasks.map((task) => (
-            <label className={`timeline-item prep-item ${progress[task.id] ? 'done' : ''}`} key={task.id}>
-              <input type="checkbox" checked={Boolean(progress[task.id])} onChange={() => toggleTask(task.id)} />
+            <label className={`timeline-item prep-item ${isDone(progress[task.id]) ? 'done' : ''}`} key={task.id}>
+              <input type="checkbox" checked={isDone(progress[task.id])} onChange={() => toggleTask(task.id)} />
               <span className="time">{task.phase}</span>
               <div>
                 <strong>{task.title}</strong>
                 <p>{task.description || 'Bez opisu.'}</p>
+                {isDone(progress[task.id]) ? <small>Wykonano: {formatDateTime(completedAt(progress[task.id]))}</small> : null}
                 <small>{task.source === 'custom' ? 'Własne - będzie dostępne w kolejnych kursach' : 'Stałe z checklisty instruktora'}</small>
               </div>
               {task.source === 'custom' ? (
@@ -1641,18 +1718,19 @@ function PlanView({ activeDay, setActiveDay, progress, toggleTask, schedule }) {
         <div className="table-title">
           <div>
             <strong>{activeGroup.title}</strong>
-            <span>{activeGroup.tasks.filter((task) => progress[task.id]).length}/{activeGroup.tasks.length} wykonane</span>
+            <span>{activeGroup.tasks.filter((task) => isDone(progress[task.id])).length}/{activeGroup.tasks.length} wykonane</span>
           </div>
-          <ProgressDial value={percent(activeGroup.tasks.filter((task) => progress[task.id]).length, activeGroup.tasks.length)} label={activeDay} />
+          <ProgressDial value={percent(activeGroup.tasks.filter((task) => isDone(progress[task.id])).length, activeGroup.tasks.length)} label={activeDay} />
         </div>
         <div className="timeline-list">
           {activeGroup.tasks.map((task) => (
-            <label className={`timeline-item ${progress[task.id] ? 'done' : ''}`} key={task.id}>
-              <input type="checkbox" checked={Boolean(progress[task.id])} onChange={() => toggleTask(task.id)} />
+            <label className={`timeline-item ${isDone(progress[task.id]) ? 'done' : ''}`} key={task.id}>
+              <input type="checkbox" checked={isDone(progress[task.id])} onChange={() => toggleTask(task.id)} />
               <span className="time">{task.time}</span>
               <div>
                 <strong>{task.title}</strong>
                 <p>{task.action}</p>
+                {isDone(progress[task.id]) ? <small>Wykonano: {formatDateTime(completedAt(progress[task.id]))}</small> : null}
                 <small>{task.metric}</small>
               </div>
             </label>
