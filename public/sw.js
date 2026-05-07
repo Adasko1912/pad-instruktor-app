@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pad-instruktor-v1';
+const CACHE_NAME = 'pad-instruktor-v2';
 const APP_SHELL = [
   './',
   './manifest.webmanifest',
@@ -28,6 +28,13 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith(
     caches.match(event.request).then((cached) => {
+      const isAppFile =
+        event.request.mode === 'navigate' ||
+        event.request.destination === 'script' ||
+        event.request.destination === 'style' ||
+        event.request.destination === 'manifest' ||
+        event.request.destination === 'image';
+
       const network = fetch(event.request)
         .then((response) => {
           if (response && response.ok) {
@@ -38,7 +45,7 @@ self.addEventListener('fetch', (event) => {
         })
         .catch(() => cached || caches.match('./'));
 
-      return cached || network;
+      return isAppFile ? network : cached || network;
     }),
   );
 });

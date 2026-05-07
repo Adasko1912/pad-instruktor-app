@@ -46,7 +46,7 @@ import {
 } from 'lucide-react';
 
 const today = new Date().toISOString().slice(0, 10);
-const assetPath = (path) => `${import.meta.env.BASE_URL}${path}`;
+const assetPath = (path) => `${import.meta.env.BASE_URL}${path}?v=2`;
 
 const navItems = [
   { id: 'start', label: 'Start', icon: ClipboardCheck },
