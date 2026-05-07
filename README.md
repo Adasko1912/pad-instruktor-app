@@ -7,7 +7,7 @@ Aplikacja webowa/PWA dla instruktora Polskiej Armii Dronow do prowadzenia kursu,
 Po wlaczeniu GitHub Pages aplikacja bedzie dostepna pod adresem:
 
 ```text
-https://adasko1912.github.io/pad-instruktor-app./
+https://adasko1912.github.io/pad-instruktor-app/
 ```
 
 ## Uruchomienie lokalnie
