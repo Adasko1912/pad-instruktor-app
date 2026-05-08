@@ -56,7 +56,8 @@ const navItems = [
   { id: 'plan', label: 'Plan', icon: CalendarDays },
   { id: 'kit', label: 'Do zabrania', icon: PackageCheck },
   { id: 'trainee-kit', label: 'Sprzęt szkolonych', icon: Plane },
-  { id: 'issues', label: 'Wydania', icon: Boxes },
+  { id: 'issues', label: 'Do wydania', icon: Boxes },
+  { id: 'decoys', label: 'Pozoracja', icon: ClipboardList },
   { id: 'trainees', label: 'Szkoleni', icon: Users },
   { id: 'instructors', label: 'Instruktorzy', icon: UserCheck },
 ];
@@ -304,6 +305,7 @@ const emptyCourseForm = {
   dateFrom: today,
   dateTo: today,
   location: '',
+  scheduleNotes: '',
 };
 
 const emptyCustomKitForm = {
@@ -341,6 +343,17 @@ const emptyUpdateForm = {
   message: '',
 };
 
+const emptyDecoyForm = {
+  time: '',
+  task: '',
+  preparation: '',
+  responsible: '',
+  status: 'nie zrealizowane',
+  notes: '',
+};
+
+const decoyStatuses = ['nie zrealizowane', 'w trakcie', 'rozstawione'];
+
 const traineeColumns = [
   ['Stopień', 'rank'],
   ['Imię', 'firstName'],
@@ -374,8 +387,11 @@ function createCourse(meta = {}) {
     status: 'aktywny',
     startedAt: new Date().toISOString(),
     endedAt: '',
+    scheduleNotes: meta.scheduleNotes || '',
     progress: {},
     preCourseProgress: {},
+    taskOwners: {},
+    decoys: [],
     carryState: {},
     trainees: [],
     equipmentRegister: {},
@@ -703,6 +719,7 @@ async function exportCourseDocx(course, kitItems = instructorKit, allPreCourseTa
       group.day,
       task.time,
       task.title,
+      course.taskOwners?.[task.id] || 'Nie przypisano',
       isDone(course.progress?.[task.id]) ? 'Wykonano' : 'Do wykonania',
       formatDateTime(completedAt(course.progress?.[task.id])),
       task.metric,
@@ -710,8 +727,16 @@ async function exportCourseDocx(course, kitItems = instructorKit, allPreCourseTa
   );
   const kitRows = kitItems.map((item) => {
     const state = course.carryState?.[item.id] || {};
-    return [item.category, item.name, item.qty, state.status || (state.packed ? 'zabrane' : 'do zabrania'), state.note || '', item.source === 'custom' ? 'Własne' : 'Stałe'];
+    return [item.category, item.name, state.qty || item.qty, state.status || (state.packed ? 'zabrane' : 'do zabrania'), state.note || '', item.source === 'custom' ? 'Własne' : 'Stałe'];
   });
+  const decoyRows = (course.decoys || []).map((item) => [
+    item.time,
+    item.task,
+    item.preparation,
+    item.responsible || 'Nie przypisano',
+    item.status,
+    item.notes,
+  ]);
   const missingRows = trainees.flatMap((trainee) => {
     const register = course.equipmentRegister?.[trainee.id] || {};
     return traineeKit
@@ -740,6 +765,7 @@ async function exportCourseDocx(course, kitItems = instructorKit, allPreCourseTa
           docParagraph(`Nazwa: ${course.name}`),
           docParagraph(`Termin: ${course.dateFrom || '-'} - ${course.dateTo || '-'}`),
           docParagraph(`Miejsce: ${course.location || '-'}`),
+          docParagraph(`Harmonogram szkolenia: ${course.scheduleNotes || '-'}`),
           docParagraph(`Status: ${course.status || 'aktywny'}`),
           docParagraph(`Rozpoczęto: ${formatDateTime(course.startedAt || course.createdAt)}`),
           docParagraph(`Zakończono: ${formatDateTime(course.endedAt)}`),
@@ -758,9 +784,13 @@ async function exportCourseDocx(course, kitItems = instructorKit, allPreCourseTa
             trainees.map((item) => [item.group, item.team, item.rank, item.firstName, item.lastName, item.phone, item.unit, item.role]),
           ),
           new Paragraph({ text: 'Do zrobienia przed kursem', heading: HeadingLevel.HEADING_1 }),
-          docTable(['Termin', 'Zadanie', 'Opis', 'Status', 'Źródło'], preCourseRows),
+          docTable(['Termin', 'Zadanie', 'Opis', 'Status', 'Wykonano', 'Źródło'], preCourseRows),
           new Paragraph({ text: 'Postęp planu D1-D3', heading: HeadingLevel.HEADING_1 }),
-          docTable(['Dzień', 'Czas', 'Blok', 'Status', 'Miernik'], taskRows),
+          docTable(['Dzień', 'Czas', 'Blok', 'Odpowiedzialny', 'Status', 'Wykonano', 'Miernik'], taskRows),
+          new Paragraph({ text: 'Pozoracja', heading: HeadingLevel.HEADING_1 }),
+          decoyRows.length
+            ? docTable(['Kiedy', 'Zadanie', 'Do przygotowania', 'Odpowiedzialny', 'Status', 'Uwagi'], decoyRows)
+            : docParagraph('Brak zadań pozoracji.'),
           new Paragraph({ text: 'Sprzęt do zabrania', heading: HeadingLevel.HEADING_1 }),
           docTable(['Kategoria', 'Element', 'Ilość', 'Status', 'Uwagi', 'Źródło'], kitRows),
           new Paragraph({ text: 'Braki sprzętu szkolonych', heading: HeadingLevel.HEADING_1 }),
@@ -864,6 +894,7 @@ function App() {
   const [customTaskForm, setCustomTaskForm] = useState(emptyCustomTaskForm);
   const [instructorForm, setInstructorForm] = useState(emptyInstructorForm);
   const [updateForm, setUpdateForm] = useState(emptyUpdateForm);
+  const [decoyForm, setDecoyForm] = useState(emptyDecoyForm);
   const [editingId, setEditingId] = useState(null);
   const [selectedTraineeId, setSelectedTraineeId] = useState('');
   const [traineeViewMode, setTraineeViewMode] = useState('table');
@@ -879,6 +910,7 @@ function App() {
   const caseLedger = activeCourse.caseLedger || caseInventory;
   const participatingInstructors = (activeCourse.instructors || []).filter((item) => item.participating);
   const profileCourseEntry = (activeCourse.instructors || []).find((item) => item.profileId === 'self');
+  const instructorOptions = participatingInstructors.map((item) => ({ id: item.id, label: fullName(item) || item.role || 'Instruktor' }));
   const allKitItems = useMemo(() => [...instructorKit, ...customKitItems], [customKitItems]);
   const allPreCourseTasks = useMemo(() => [...preCourseTasks, ...customPreCourseTasks], [customPreCourseTasks]);
 
@@ -965,6 +997,37 @@ function App() {
       ...previous,
       [itemId]: { packed: false, status: 'do zabrania', note: '', ...(previous[itemId] || {}), ...patch },
     }));
+  };
+
+  const updateTaskOwner = (taskId, responsible) => {
+    updateCourseField('taskOwners', (previous) => ({
+      ...(previous || {}),
+      [taskId]: responsible,
+    }));
+  };
+
+  const addDecoyTask = (event) => {
+    event.preventDefault();
+    if (!decoyForm.task.trim()) return;
+    updateCourseField('decoys', (previous) => [
+      ...(previous || []),
+      {
+        id: uid('pozoracja'),
+        ...decoyForm,
+        task: decoyForm.task.trim(),
+        preparation: decoyForm.preparation.trim(),
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+    setDecoyForm(emptyDecoyForm);
+  };
+
+  const updateDecoyTask = (decoyId, patch) => {
+    updateCourseField('decoys', (previous) => (previous || []).map((item) => (item.id === decoyId ? { ...item, ...patch } : item)));
+  };
+
+  const deleteDecoyTask = (decoyId) => {
+    updateCourseField('decoys', (previous) => (previous || []).filter((item) => item.id !== decoyId));
   };
 
   const updateCase = (caseId, patch) => {
@@ -1188,7 +1251,7 @@ function App() {
   };
 
   const exportIssues = () => {
-    exportCsv('wydania_sprzetu_pad.csv', [
+    exportCsv('do_wydania_sprzetu_pad.csv', [
       ['CASE', 'Walizka', 'Zawartość', 'Dla kogo', 'Data wydania', 'Data zwrotu', 'Status', 'Uwagi'],
       ...caseLedger.map((item) => [
         item.caseNo,
@@ -1210,6 +1273,7 @@ function App() {
       dateFrom: courseForm.dateFrom,
       dateTo: courseForm.dateTo,
       location: courseForm.location,
+      scheduleNotes: courseForm.scheduleNotes,
     });
     setCourses((previous) => [course, ...previous]);
     setActiveCourseId(course.id);
@@ -1336,7 +1400,7 @@ function App() {
               Lista szkolonych
             </ActionButton>
             <ActionButton icon={FileSpreadsheet} variant="secondary" onClick={exportIssues}>
-              Wydania
+              Do wydania
             </ActionButton>
             {activeCourse.status === 'zakończony' ? (
               <ActionButton icon={CheckCircle2} variant="secondary" onClick={() => exportCourseDocx(activeCourse, allKitItems, allPreCourseTasks)}>
@@ -1405,6 +1469,9 @@ function App() {
             progress={progress}
             toggleTask={toggleTask}
             schedule={schedule}
+            taskOwners={activeCourse.taskOwners || {}}
+            updateTaskOwner={updateTaskOwner}
+            instructorOptions={instructorOptions}
           />
         )}
 
@@ -1447,6 +1514,18 @@ function App() {
           />
         )}
 
+        {activeView === 'decoys' && (
+          <DecoysView
+            decoys={activeCourse.decoys || []}
+            decoyForm={decoyForm}
+            setDecoyForm={setDecoyForm}
+            addDecoyTask={addDecoyTask}
+            updateDecoyTask={updateDecoyTask}
+            deleteDecoyTask={deleteDecoyTask}
+            instructorOptions={instructorOptions}
+          />
+        )}
+
         {activeView === 'trainees' && (
           <TraineesView
             form={form}
@@ -1476,6 +1555,7 @@ function App() {
             markProfileParticipating={markProfileParticipating}
             profileCourseEntry={profileCourseEntry}
             instructors={activeCourse.instructors || []}
+            activeInstructors={participatingInstructors}
             instructorForm={instructorForm}
             setInstructorForm={setInstructorForm}
             addInstructorToCourse={addInstructorToCourse}
@@ -1534,6 +1614,10 @@ function CoursesView({ courses, activeCourse, courseForm, setCourseForm, createN
             <span>Miejsce</span>
             <input value={courseForm.location} onChange={(event) => updateForm('location', event.target.value)} placeholder="np. Ociesęki / Nowa Dęba" />
           </label>
+          <label className="wide">
+            <span>Harmonogram szkolenia</span>
+            <textarea value={courseForm.scheduleNotes} onChange={(event) => updateForm('scheduleNotes', event.target.value)} placeholder="np. D1 15:30 otwarcie, 16:00 wydanie sprzętu..." rows={4} />
+          </label>
           <div className="form-actions">
             <button className="submit-button" type="submit">
               <Plus size={17} />
@@ -1551,6 +1635,7 @@ function CoursesView({ courses, activeCourse, courseForm, setCourseForm, createN
               <div className="course-meta">
                 <strong>{course.name}</strong>
                 <span>{course.dateFrom || '-'} - {course.dateTo || '-'} / {course.location || 'bez miejsca'}</span>
+                {course.scheduleNotes ? <small>Harmonogram: {course.scheduleNotes}</small> : null}
                 <small>{course.status || 'aktywny'} / {(course.trainees || []).length} szkolonych / {(course.caseLedger || []).filter((item) => item.status === 'wydane').length} aktywnych wydań</small>
                 {course.endedAt ? <small>Zakończono: {formatDateTime(course.endedAt)}</small> : null}
               </div>
@@ -1559,6 +1644,7 @@ function CoursesView({ courses, activeCourse, courseForm, setCourseForm, createN
                 <input type="date" value={course.dateFrom || ''} onChange={(event) => updateCourseMeta(course.id, { dateFrom: event.target.value })} />
                 <input type="date" value={course.dateTo || ''} onChange={(event) => updateCourseMeta(course.id, { dateTo: event.target.value })} />
                 <input value={course.location || ''} onChange={(event) => updateCourseMeta(course.id, { location: event.target.value })} placeholder="Miejsce" />
+                <textarea className="wide" value={course.scheduleNotes || ''} onChange={(event) => updateCourseMeta(course.id, { scheduleNotes: event.target.value })} placeholder="Harmonogram szkolenia" rows={3} />
               </div>
               <div className="row-actions">
                 <ActionButton icon={FolderOpen} variant={course.id === activeCourse.id ? 'primary' : 'secondary'} onClick={() => switchCourse(course.id)}>
@@ -1642,9 +1728,9 @@ function StartView({ doneTasks, totalTasks, preCourseDone, totalPreCourse, packe
         </div>
 
         <div className="panel">
-          <SectionHeader kicker="Ewidencja" title="Wydane CASE">
+          <SectionHeader kicker="Ewidencja" title="Do wydania CASE">
             <ActionButton icon={Boxes} variant="secondary" onClick={() => setActiveView('issues')}>
-              Wydania
+              Do wydania
             </ActionButton>
           </SectionHeader>
           <div className="compact-list">
@@ -1723,7 +1809,7 @@ function PreCourseView({ tasks, progress, toggleTask, customTaskForm, setCustomT
   );
 }
 
-function PlanView({ activeDay, setActiveDay, progress, toggleTask, schedule }) {
+function PlanView({ activeDay, setActiveDay, progress, toggleTask, schedule, taskOwners, updateTaskOwner, instructorOptions }) {
   const activeGroup = schedule.find((group) => group.day === activeDay);
 
   return (
@@ -1756,6 +1842,15 @@ function PlanView({ activeDay, setActiveDay, progress, toggleTask, schedule }) {
                 <p>{task.action}</p>
                 {isDone(progress[task.id]) ? <small>Wykonano: {formatDateTime(completedAt(progress[task.id]))}</small> : null}
                 <small>{task.metric}</small>
+                <label className="task-owner">
+                  <span>Odpowiedzialny za zagadnienie</span>
+                  <select value={taskOwners[task.id] || ''} onChange={(event) => updateTaskOwner(task.id, event.target.value)}>
+                    <option value="">Nie przypisano</option>
+                    {instructorOptions.map((item) => (
+                      <option key={item.id} value={item.label}>{item.label}</option>
+                    ))}
+                  </select>
+                </label>
               </div>
             </label>
           ))}
@@ -1819,7 +1914,7 @@ function KitView({ filteredKit, kitFilter, setKitFilter, search, setSearch, carr
           </thead>
           <tbody>
             {filteredKit.map((item) => {
-              const state = carryState[item.id] || { packed: false, status: 'do zabrania', note: '' };
+              const state = carryState[item.id] || { packed: false, status: 'do zabrania', note: '', qty: item.qty };
               return (
                 <tr key={item.id}>
                   <td>
@@ -1836,7 +1931,9 @@ function KitView({ filteredKit, kitFilter, setKitFilter, search, setSearch, carr
                   </td>
                   <td><span className="category-label">{item.category}</span></td>
                   <td><strong>{item.name}</strong></td>
-                  <td>{item.qty}</td>
+                  <td>
+                    <input className="qty-input" value={state.qty ?? item.qty} onChange={(event) => updateCarryItem(item.id, { qty: event.target.value })} placeholder={item.qty} />
+                  </td>
                   <td>
                     <select value={state.status} onChange={(event) => updateCarryItem(item.id, { status: event.target.value })}>
                       {['do zabrania', 'zabrane', 'brak', 'sprawdzić'].map((status) => (
@@ -1859,6 +1956,113 @@ function KitView({ filteredKit, kitFilter, setKitFilter, search, setSearch, carr
             })}
           </tbody>
         </table>
+      </div>
+    </section>
+  );
+}
+
+function DecoysView({ decoys, decoyForm, setDecoyForm, addDecoyTask, updateDecoyTask, deleteDecoyTask, instructorOptions }) {
+  const updateForm = (field, value) => setDecoyForm((previous) => ({ ...previous, [field]: value }));
+  const groupedByStatus = decoyStatuses.map((status) => ({
+    status,
+    items: decoys.filter((item) => item.status === status),
+  }));
+
+  return (
+    <section className="view-stack">
+      <SectionHeader kicker="Pozoracja" title="Zadania, przygotowanie i odpowiedzialni" />
+
+      <div className="panel">
+        <SectionHeader kicker="Nowy wpis" title="Dodaj zadanie pozoracji" />
+        <form className="decoy-form" onSubmit={addDecoyTask}>
+          <label>
+            <span>Kiedy</span>
+            <input value={decoyForm.time} onChange={(event) => updateForm('time', event.target.value)} placeholder="np. D3 04:00 albo 2026-05-08 15:30" />
+          </label>
+          <label>
+            <span>Zadanie</span>
+            <input value={decoyForm.task} onChange={(event) => updateForm('task', event.target.value)} placeholder="np. Rozstawić A2 snajper z balonem" required />
+          </label>
+          <label className="wide">
+            <span>Co trzeba przygotować</span>
+            <textarea value={decoyForm.preparation} onChange={(event) => updateForm('preparation', event.target.value)} placeholder="Sprzęt, materiały, miejsce, zabezpieczenie i uwagi dla pozoracji" rows={3} />
+          </label>
+          <label>
+            <span>Odpowiedzialny</span>
+            <select value={decoyForm.responsible} onChange={(event) => updateForm('responsible', event.target.value)}>
+              <option value="">Nie przypisano</option>
+              {instructorOptions.map((item) => (
+                <option key={item.id} value={item.label}>{item.label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Status</span>
+            <select value={decoyForm.status} onChange={(event) => updateForm('status', event.target.value)}>
+              {decoyStatuses.map((status) => (
+                <option key={status}>{status}</option>
+              ))}
+            </select>
+          </label>
+          <label className="wide">
+            <span>Uwagi</span>
+            <input value={decoyForm.notes} onChange={(event) => updateForm('notes', event.target.value)} placeholder="Opcjonalne uwagi" />
+          </label>
+          <div className="form-actions">
+            <button className="submit-button" type="submit">
+              <Plus size={17} />
+              <span>Dodaj pozorację</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <div className="decoy-board">
+        {groupedByStatus.map((column) => (
+          <div className="panel decoy-column" key={column.status}>
+            <SectionHeader kicker={`${column.items.length} wpisów`} title={column.status} />
+            <div className="decoy-list">
+              {column.items.map((item) => (
+                <article className="decoy-card" key={item.id}>
+                  <div className="decoy-card-head">
+                    <strong>{item.task}</strong>
+                    <IconButton icon={Trash2} label="Usuń pozorację" variant="danger" onClick={() => deleteDecoyTask(item.id)} />
+                  </div>
+                  <label>
+                    <span>Kiedy</span>
+                    <input value={item.time || ''} onChange={(event) => updateDecoyTask(item.id, { time: event.target.value })} />
+                  </label>
+                  <label>
+                    <span>Do przygotowania</span>
+                    <textarea value={item.preparation || ''} onChange={(event) => updateDecoyTask(item.id, { preparation: event.target.value })} rows={3} />
+                  </label>
+                  <label>
+                    <span>Odpowiedzialny</span>
+                    <select value={item.responsible || ''} onChange={(event) => updateDecoyTask(item.id, { responsible: event.target.value })}>
+                      <option value="">Nie przypisano</option>
+                      {instructorOptions.map((option) => (
+                        <option key={option.id} value={option.label}>{option.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Status</span>
+                    <select value={item.status || 'nie zrealizowane'} onChange={(event) => updateDecoyTask(item.id, { status: event.target.value })}>
+                      {decoyStatuses.map((status) => (
+                        <option key={status}>{status}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Uwagi</span>
+                    <input value={item.notes || ''} onChange={(event) => updateDecoyTask(item.id, { notes: event.target.value })} />
+                  </label>
+                </article>
+              ))}
+              {!column.items.length ? <div className="empty-line">Brak zadań w tym statusie.</div> : null}
+            </div>
+          </div>
+        ))}
       </div>
     </section>
   );
@@ -1938,7 +2142,7 @@ function TraineeKitView({ trainees, activeTrainee, activeTraineeId, setSelectedT
 function IssuesView({ search, setSearch, filteredCases, updateCase, trainees, exportIssues }) {
   return (
     <section className="view-stack">
-      <SectionHeader kicker="Odpowiedzialność materialna" title="Wydanie i zwrot walizek CASE">
+      <SectionHeader kicker="Odpowiedzialność materialna" title="Do wydania i zwrot walizek CASE">
         <div className="section-actions">
           <SearchBox value={search} onChange={setSearch} placeholder="Szukaj CASE" />
           <ActionButton icon={Download} variant="secondary" onClick={exportIssues}>
@@ -2197,6 +2401,7 @@ function InstructorsView({
   markProfileParticipating,
   profileCourseEntry,
   instructors,
+  activeInstructors,
   instructorForm,
   setInstructorForm,
   addInstructorToCourse,
@@ -2216,7 +2421,7 @@ function InstructorsView({
   return (
     <section className="instructors-layout">
       <div className="panel form-panel">
-        <SectionHeader kicker="Twój profil" title="Profil instruktora" />
+        <SectionHeader kicker="Logowanie" title="Profil instruktora" />
         <form className="trainee-form" onSubmit={saveInstructorProfile}>
           <label>
             <span>Stopień</span>
@@ -2247,6 +2452,31 @@ function InstructorsView({
             </ActionButton>
           </div>
         </form>
+      </div>
+
+      <div className="panel">
+        <SectionHeader kicker={`${activeInstructors.length} aktywnych`} title="Aktywni instruktorzy na kursie">
+          <StatusPill value={profileCourseEntry?.participating ? 'zalogowany' : 'nie bierzesz udziału'} />
+        </SectionHeader>
+        <div className="active-instructors">
+          {activeInstructors.map((item) => (
+            <div className="active-instructor" key={item.id}>
+              <UserCheck size={18} />
+              <div>
+                <strong>{fullName(item)}</strong>
+                <span>{item.role || 'Instruktor'} / {item.unit || 'bez jednostki'}</span>
+              </div>
+            </div>
+          ))}
+          {!activeInstructors.length ? <div className="empty-line">Brak instruktorów oznaczonych jako biorący udział w kursie.</div> : null}
+        </div>
+      </div>
+
+      <div className="panel">
+        <SectionHeader kicker="Chmura" title="Wymiana informacji" />
+        <p className="sync-note">
+          Profil, aktywni instruktorzy i meldunki są gotowe do synchronizacji, ale ta wersja działa lokalnie w przeglądarce. Żeby dane wymieniały się między telefonami instruktorów w czasie rzeczywistym, trzeba podłączyć Firebase, Supabase albo własny serwer z kontami użytkowników.
+        </p>
       </div>
 
       <div className="panel form-panel">

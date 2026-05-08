@@ -34,7 +34,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -549,6 +550,20 @@ button {
   color: #3d4539;
 }
 
+.task-owner {
+  display: grid;
+  max-width: 360px;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.task-owner span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
 .timeline-item.done {
   border-color: #bed1b0;
   background: #f0f7eb;
@@ -602,7 +617,8 @@ td strong {
 }
 
 input,
-select {
+select,
+textarea {
   width: 100%;
   min-height: 36px;
   border: 1px solid var(--line-strong);
@@ -614,9 +630,15 @@ select {
 }
 
 input:focus,
-select:focus {
+select:focus,
+textarea:focus {
   border-color: var(--olive);
   box-shadow: 0 0 0 3px rgba(82, 103, 63, 0.14);
+}
+
+textarea {
+  resize: vertical;
+  line-height: 1.45;
 }
 
 input[type="checkbox"] {
@@ -697,9 +719,22 @@ input[type="checkbox"] {
 }
 
 .status-pill.do-wypożyczenia,
-.status-pill.wydane {
+.status-pill.wydane,
+.status-pill.w-trakcie {
   background: var(--amber-soft);
   color: #8a581a;
+}
+
+.status-pill.rozstawione,
+.status-pill.zalogowany {
+  background: #e8f4e1;
+  color: #42672b;
+}
+
+.status-pill.nie-zrealizowane,
+.status-pill.nie-bierzesz-udziału {
+  background: var(--red-soft);
+  color: var(--red);
 }
 
 .trainees-layout {
@@ -776,16 +811,31 @@ input[type="checkbox"] {
   align-items: end;
 }
 
-.inline-form label {
+.decoy-form {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.7fr) minmax(240px, 1.2fr) minmax(180px, 0.8fr) minmax(170px, 0.7fr);
+  gap: 12px;
+}
+
+.inline-form label,
+.decoy-form label,
+.decoy-card label {
   display: grid;
   gap: 6px;
 }
 
-.inline-form label span {
+.inline-form label span,
+.decoy-form label span,
+.decoy-card label span {
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
   text-transform: uppercase;
+}
+
+.decoy-form .wide,
+.course-edit-grid .wide {
+  grid-column: 1 / -1;
 }
 
 .form-actions {
@@ -850,7 +900,9 @@ input[type="checkbox"] {
 .grouped-trainees,
 .team-list,
 .instructor-list,
-.updates-list {
+.updates-list,
+.active-instructors,
+.decoy-list {
   display: grid;
   gap: 12px;
 }
@@ -859,10 +911,24 @@ input[type="checkbox"] {
 .group-section,
 .team-person,
 .instructor-row,
-.update-row {
+.update-row,
+.active-instructor,
+.decoy-card {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-soft);
+}
+
+.active-instructor {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+}
+
+.active-instructor svg {
+  color: var(--olive);
+  flex: 0 0 auto;
 }
 
 .instructor-row,
@@ -881,6 +947,8 @@ input[type="checkbox"] {
 
 .instructor-row strong,
 .instructor-row span,
+.active-instructor strong,
+.active-instructor span,
 .update-row strong,
 .update-row span,
 .update-row p {
@@ -888,6 +956,7 @@ input[type="checkbox"] {
 }
 
 .instructor-row span,
+.active-instructor span,
 .update-row span {
   margin-top: 3px;
   color: var(--muted);
@@ -896,6 +965,40 @@ input[type="checkbox"] {
 
 .update-row p {
   margin: 6px 0 0;
+}
+
+.sync-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.decoy-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.decoy-column {
+  align-self: start;
+}
+
+.decoy-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.decoy-card-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.qty-input {
+  min-width: 90px;
 }
 
 .mini-toggle {
@@ -1068,7 +1171,9 @@ input[type="checkbox"] {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .inline-form {
+  .inline-form,
+  .decoy-form,
+  .decoy-board {
     grid-template-columns: 1fr;
   }
 
